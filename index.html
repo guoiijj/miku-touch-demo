@@ -1,0 +1,155 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="robots" content="noindex, nofollow" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>指尖初音 · 手指交互 3D 人物</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%233fd8c0'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="stage">
+  <canvas id="view"></canvas>
+  <div id="bubble" class="bubble hidden"><span id="bubbleText"></span></div>
+  <div id="loading" class="loading">
+    <div class="ring"></div>
+    <div class="loading-text">正在生成 3D 人物…</div>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+</div>
+
+<header id="topbar">
+  <div class="brand">
+    <span class="dot"></span>
+    <b>指尖初音</b>
+    <span class="sub">手指交互 · 3D 人物</span>
+  </div>
+  <div class="chips">
+    <span class="chip" id="chipCam">摄像头：未开启</span>
+    <span class="chip" id="chipHand">手：未检测</span>
+    <span class="chip" id="chipFps">-- FPS</span>
+  </div>
+</header>
+
+<aside id="leftRail" class="rail">
+  <section class="card">
+    <div class="card-head">
+      <b>手指交互</b>
+      <button id="btnCam" class="btn primary small">开启摄像头</button>
+    </div>
+    <div class="cam-wrap">
+      <video id="video" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div class="cam-hint" id="camHint">点“开启摄像头”后，把手抬到画面里</div>
+    </div>
+    <div class="row">
+      <label class="lab">摄像头</label>
+      <select id="selCam" class="sel"><option value="">默认</option></select>
+    </div>
+    <div class="row">
+      <label class="lab">手感</label>
+      <div class="seg" id="segFeel">
+        <button data-k="snappy">跟手</button>
+        <button data-k="balance" class="on">均衡</button>
+        <button data-k="steady">稳定</button>
+      </div>
+    </div>
+    <div class="row">
+      <label class="lab">手指灵敏度</label>
+      <input id="rngSens" class="rng" type="range" min="0.6" max="1.8" step="0.02" value="1" />
+      <span class="val" id="valSens">1.00</span>
+    </div>
+    <div class="row">
+      <label class="lab">交汇判定</label>
+      <input id="rngPinch" class="rng" type="range" min="0.5" max="1.6" step="0.02" value="1" />
+      <span class="val" id="valPinch">1.00</span>
+    </div>
+    <div class="row toggles">
+      <label class="chk"><input type="checkbox" id="chkSkeleton" checked /><span>手部骨架</span></label>
+      <label class="chk"><input type="checkbox" id="chkZones" /><span>热区</span></label>
+      <label class="chk"><input type="checkbox" id="chkMirror" checked /><span>镜像</span></label>
+    </div>
+  </section>
+</aside>
+
+<aside id="rightRail" class="rail">
+  <section class="card">
+    <div class="card-head"><b>动作</b></div>
+    <div class="grid">
+      <button class="btn" id="btnBlink">眨眼</button>
+      <button class="btn" id="btnHi">打招呼</button>
+      <button class="btn" id="btnSong">唱歌</button>
+      <button class="btn" id="btnSpin">转一圈</button>
+      <button class="btn" id="btnDance">跳舞</button>
+      <button class="btn" id="btnReset">复位</button>
+      <button class="btn" id="btnTurn">旋转</button>
+    </div>
+    <div class="row">
+      <label class="lab">人物</label>
+      <div class="seg" id="segModel">
+        <button data-k="model">写实模型</button>
+        <button data-k="proc">程序化</button>
+      </div>
+    </div>
+  </section>
+  <section class="card">
+    <div class="card-head"><b>视角</b></div>
+    <div class="grid">
+      <button class="btn view on" data-view="front">正视</button>
+      <button class="btn view" data-view="side">侧视</button>
+      <button class="btn view" data-view="back">背视</button>
+      <button class="btn view" data-view="face">特写</button>
+    </div>
+  </section>
+  <section class="card">
+    <div class="card-head"><b>怎么玩</b></div>
+    <ul class="tips">
+      <li><b>指尖</b>移到头顶 / 脸颊 / 下巴 / 发尾，会有反应</li>
+      <li><b>拇指指尖与食指指尖交汇</b>＝捏住，可以拖人物、拉发尾</li>
+      <li>手指<b>左右滑动</b>她会跟着看，<b>张开五指</b>她会挥手</li>
+      <li>没有摄像头？用<b>鼠标</b>当指尖，点一下就是触碰</li>
+      <li><b>旋转</b>让她慢慢转给你看（停在最近的 90°）；键盘 <b>←</b> <b>→</b> 也能让她左右转</li>
+      <li>开麦克风后可以直接说：<b>旋转</b> / <b>转一圈</b> / <b>左转</b> / <b>右转</b> / <b>转身</b> / <b>停下</b></li>
+    </ul>
+  </section>
+  <section class="card">
+    <div class="card-head">
+      <b>声音</b>
+      <label class="chk"><input type="checkbox" id="chkVoice" checked /><span>说话</span></label>
+    </div>
+    <div class="row">
+      <label class="lab">学我说话</label>
+      <button class="btn small" id="btnMic">开启麦克风</button>
+    </div>
+    <div class="row">
+      <label class="lab">音量</label>
+      <input id="rngVol" class="rng" type="range" min="0" max="1" step="0.02" value="0.9" />
+      <span class="val" id="valVol">0.90</span>
+    </div>
+  </section>
+</aside>
+
+<div id="bottomBar">
+  <div class="log" id="log"></div>
+  <div class="hint">右键拖动旋转 · 滚轮缩放 · 1-4 切换视角 · 空格：眨眼</div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+
+<button id="mobilePanelBtn" type="button" aria-label="控制面板">控制</button>
+<script>
+  (function () {
+    var btn = document.getElementById('mobilePanelBtn');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var open = document.body.classList.toggle('controls-open');
+      btn.textContent = open ? '关闭' : '控制';
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) window.scrollTo(0, 0);
+    });
+  })();
+</script>
+</body>
+</html>
+
