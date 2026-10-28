@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>初音未来 · 衣橱工作室</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23222524'/%3E%3Cpath d='M8 23 16 8l8 15h-3.2L16 14.2 11.2 23Z' fill='%23e9e5dc'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<main id="stage">
+  <canvas id="view"></canvas>
+  <div class="paper-grain" aria-hidden="true"></div>
+  <div class="studio-glow" aria-hidden="true"></div>
+
+  <div id="loading" class="loading">
+    <div class="loading-mark">M</div>
+    <p id="loadingText">正在整理衣架…</p>
+    <span>73.7 万顶点 · 33 骨骼 · 6 套造型</span>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">MIKU</span>
+      <div>
+        <p class="overline">HATSUNE MIKU · VIRTUAL ATELIER</p>
+        <h1>衣橱工作室</h1>
+      </div>
+    </div>
+    <div class="top-status">
+      <span id="modelStatus">正在载入模型</span>
+      <i></i>
+      <span>FIT / 实时骨骼</span>
+    </div>
+  </header>
+
+  <aside class="lookbook" aria-label="造型列表">
+    <div class="section-head">
+      <span>LOOKBOOK</span>
+      <span id="lookCounter">01 / 06</span>
+    </div>
+    <div id="lookList" class="look-list"></div>
+    <div class="lookbook-foot">
+      <p>衣服是独立衣层，贴身部分跟随同一套骨骼。</p>
+      <span>6 LOOKS · 5 GARMENT LAYERS</span>
+    </div>
+  </aside>
+
+  <aside class="style-panel" aria-label="当前造型与动作">
+    <div class="section-head">
+      <span id="lookEn">FORMULA / 01</span>
+      <span id="fitTag">LIVE FIT</span>
+    </div>
+    <h2 id="lookName">公式解构</h2>
+    <p id="lookNote" class="look-note">象牙白胸衣、炭黑袖套与青色滚边，保留最初的舞台轮廓。</p>
+    <div id="swatches" class="swatches" aria-label="当前配色"></div>
+    <div class="panel-rule"></div>
+    <div class="section-head tight">
+      <span>MOTION</span>
+      <span id="motionState">自然待机</span>
+    </div>
+    <div id="motionGrid" class="motion-grid">
+      <button data-motion="idle" class="motion active"><b>待机</b><span>呼吸 · 重心</span></button>
+      <button data-motion="wave" class="motion"><b>挥手</b><span>右臂 · 延迟</span></button>
+      <button data-motion="turn" class="motion"><b>转身</b><span>髋部带动</span></button>
+      <button data-motion="pose" class="motion"><b>定格</b><span>手扶腰</span></button>
+      <button data-motion="stretch" class="motion"><b>伸展</b><span>抬臂 · 屈膝</span></button>
+      <button data-motion="dance" class="motion"><b>舞步</b><span>全身协同</span></button>
+    </div>
+    <div class="panel-rule"></div>
+    <p class="view-note">拖动画面旋转视角 · 滚轮缩放 · 双击回到正面</p>
+  </aside>
+
+  <section class="prompt-dock" aria-label="自然语言换装">
+    <div class="prompt-topline">
+      <span>WARDROBE REQUEST</span>
+      <span>中文一句话即可</span>
+    </div>
+    <div class="prompt-row">
+      <input id="promptInput" autocomplete="off" spellcheck="false" placeholder="例如：换成粉色的樱花和装，再转一圈" />
+      <button id="promptSend">为她换装 <i>↗</i></button>
+    </div>
+    <div id="suggestions" class="suggestions"></div>
+    <p id="reply" class="reply">可以直接说颜色、衣型和动作。她会按你的描述换好，再动给你看。</p>
+  </section>
+
+  <div id="toast" class="toast" role="status"></div>
+</main>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
