@@ -1,5 +1,6 @@
 import * as THREE from '../vendor/three/three.module.js';
 import { GLTFLoader } from '../vendor/three/loaders/GLTFLoader.js';
+import { DRACOLoader } from '../vendor/three/loaders/DRACOLoader.js';
 import { buildModelCharacter } from './modelCharacter.js';
 import { Rig } from './rig.js';
 import { Wardrobe, OUTFITS } from './wardrobe.js';
@@ -151,11 +152,26 @@ function setLoading(text) {
 
 async function loadCharacter() {
   const loader = new GLTFLoader();
-  const url = 'models/miku_rig.glb';
+  const draco = new DRACOLoader();
+  draco.setDecoderPath('vendor/three/libs/draco/gltf/');
+  loader.setDRACOLoader(draco);
+  const LOCAL_MODEL = 'models/miku_rig.glb';
+  const CDN_MODEL = 'https://cdn.jsdelivr.net/gh/guoiijj/miku-touch-demo@main/models/miku_rig.glb';
+  const urls = location.hostname.endsWith('github.io') ? [CDN_MODEL, LOCAL_MODEL] : [LOCAL_MODEL, CDN_MODEL];
   setLoading('正在读取模型与贴图…');
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const buf = await resp.arrayBuffer();
+  let buf = null;
+  let lastError = null;
+  for (const url of urls) {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      buf = await resp.arrayBuffer();
+      break;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  if (!buf) throw lastError || new Error('model fetch failed');
   setLoading('正在整理骨骼与动作…');
   const gltf = await loader.parseAsync(buf, 'models/');
   char = buildModelCharacter({ renderer, scene, gltf });

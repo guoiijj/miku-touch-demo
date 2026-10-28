@@ -67,7 +67,7 @@ export const OUTFITS = {
     palette: { primary: '#b9b3bf', secondary: '#f1eee7', mid: '#a9a3b2', accent: '#d2b16b' },
     strength: 0.94,
     accentStrength: 0.8,
-    layers: ['longSkirt', 'sheerOverskirt', 'stageTorso', 'waistband'],
+    layers: ['longSkirt', 'sheerOverskirt', 'stageTorso', 'stageSleeves', 'waistband'],
   },
 };
 
@@ -310,16 +310,7 @@ function stabilizeGarmentWeights(char) {
   }
 
   // 绑定姿态骨骼坐标：几何体是绑定姿态，量当前姿态会错位。
-  if (!char._bindHeads) {
-    const inv = char.mesh.bindMatrixInverse;
-    const M = char.mesh.bindMatrix.constructor;
-    char._bindHeads = bones.map((_, i) => {
-      const m = new M().multiplyMatrices(inv, new M().copy(char.skeleton.boneInverses[i]).invert());
-      const e = m.elements;
-      return [e[12], e[13], e[14]];
-    });
-  }
-  const BH = char._bindHeads;
+  const BH = bindHeads(char);
 
   // 按三角面求连通件（不含头发），模型由许多独立小件拼成。
   const uf = new Int32Array(n);
@@ -578,6 +569,20 @@ function makeShell(char, opts) {
   mesh.visible = false;
   mesh.renderOrder = 2;
   return { id: opts.id, mesh, material, uniforms, role: opts.role || 'primary' };
+}
+
+// 每根骨骼在绑定姿态下的头部坐标（与模型几何同一坐标系）。
+// 衣服几何必须按绑定姿态生成，否则蒙皮时会把当前动作再叠加一次。
+function bindHeads(char) {
+  if (char._bindHeads) return char._bindHeads;
+  const inv = char.mesh.bindMatrixInverse;
+  const M = char.mesh.bindMatrix.constructor;
+  char._bindHeads = char.skeleton.bones.map((_, i) => {
+    const m = new M().multiplyMatrices(inv, new M().copy(char.skeleton.boneInverses[i]).invert());
+    const e = m.elements;
+    return [e[12], e[13], e[14]];
+  });
+  return char._bindHeads;
 }
 
 function makeSkirtGeometry(char, opts) {
@@ -915,14 +920,14 @@ function sleeveGeometry(char, sign, opts) {
   const foreIndex = char.skeleton.bones.indexOf(fore);
   const rippleAmt = opts.ripple ?? 0.012;
 
-  // 袖子必须沿着绑定姿态的真实手臂方向生成。旧版按水平 T-pose 建模，
-  // 绑到自然下垂的骨架上就会横着悬空。
-  char.act.updateMatrixWorld(true);
-  const local = (bone) => char.act.worldToLocal(bone.getWorldPosition(new THREE.Vector3()));
-  const p0 = local(upper);
-  const p1 = local(fore);
-  const p2 = local(hand);
-  p0.add(new THREE.Vector3(-sign * 0.014, 0.045, 0.004));
+  // 袖子沿绑定姿态的手臂方向生成：几何体本身处在绑定姿态，
+  // 若用当前动作的世界坐标，蒙皮时会把动作再叠加一次，袖口就会离开手掌。
+  const BH = bindHeads(char);
+  const handIndex = char.skeleton.bones.indexOf(hand);
+  const p0 = new THREE.Vector3(...BH[armIndex]);
+  const p1 = new THREE.Vector3(...BH[foreIndex]);
+  const p2 = new THREE.Vector3(...BH[handIndex]);
+  p0.add(new THREE.Vector3(-sign * 0.016, 0.024, 0.004));
   const lenA = p0.distanceTo(p1), lenB = p1.distanceTo(p2) || 1;
   const elbowT = clamp01(lenA / (lenA + lenB));
   const uStart = opts.start ?? 0;
@@ -931,11 +936,13 @@ function sleeveGeometry(char, sign, opts) {
   const r1 = opts.r1 ?? opts.rz1 ?? 0.058;
   const rBell = opts.rBell ?? r1;
   const rCuff = opts.rCuff ?? Math.min(r1, 0.034);
+  const rWrist = opts.rWrist ?? rCuff * 0.74;
   const depth = opts.depth ?? 0.84;
   const tangentA = new THREE.Vector3().subVectors(p1, p0).normalize();
   const tangentB = new THREE.Vector3().subVectors(p2, p1).normalize();
 
   let capCenter = null;
+  let endCenter = null;
   for (let i = 0; i <= segments; i++) {
     const t = i / segments;
     const u = uStart + (uEnd - uStart) * t;
@@ -953,11 +960,13 @@ function sleeveGeometry(char, sign, opts) {
     const ref = Math.abs(tangent.z) < 0.88 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0);
     const sideAxis = new THREE.Vector3().crossVectors(ref, tangent).normalize();
     const depthAxis = new THREE.Vector3().crossVectors(tangent, sideAxis).normalize();
-    const shoulderTaper = 0.70 + 0.30 * sstep(0, 0.085, t);
+    const shoulderTaper = 0.56 + 0.44 * sstep(0, 0.15, t);
+    const wristTaper = 1 - (1 - rWrist / rCuff) * sstep(0.945, 1.0, t);
     const radius = (r0 + (r1 - r0) * sstep(0, 0.42, t)
       + (rBell - r1) * sstep(0.32, 0.72, t)
-      + (rCuff - rBell) * sstep(0.78, 1.0, t)) * shoulderTaper;
+      + (rCuff - rBell) * sstep(0.78, 1.0, t)) * shoulderTaper * wristTaper;
     if (i === 0) capCenter = center.clone();
+    if (i === segments) endCenter = center.clone();
     for (let j = 0; j <= radial; j++) {
       const a = (j / radial) * Math.PI * 2;
       const ripple = 1 + rippleAmt * Math.sin(a * 6 + t * 8.5) * (0.18 + 0.82 * t);
@@ -989,6 +998,16 @@ function sleeveGeometry(char, sign, opts) {
     colors.push(0.94, 0.94, 0.94);
     for (let j = 0; j < radial; j++) indices.push(capIndex, j, j + 1);
   }
+  let endCapIndex = -1;
+  if (endCenter) {
+    endCapIndex = positions.length / 3;
+    positions.push(endCenter.x, endCenter.y, endCenter.z);
+    normals.push(0, 0, 1);
+    uvs.push(1, 0.5);
+    colors.push(0.9, 0.9, 0.9);
+    const lastRing = segments * (radial + 1);
+    for (let j = 0; j < radial; j++) indices.push(lastRing + j, lastRing + j + 1, endCapIndex);
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
@@ -1011,6 +1030,10 @@ function sleeveGeometry(char, sign, opts) {
   if (capIndex >= 0) {
     const k = capIndex * 4;
     si[k] = Math.max(0, armIndex); sw[k] = 1;
+  }
+  if (endCapIndex >= 0) {
+    const k = endCapIndex * 4;
+    si[k] = Math.max(0, foreIndex); sw[k] = 1;
   }
   g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
   g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
@@ -1129,11 +1152,11 @@ export class Wardrobe {
     this.layers.kimonoSleeves = [
       makeSleeve(char, 1, {
         id: 'kimonoSleeves', role: 'primary', color: '#b96d7d', trimColor: '#e0b0b8',
-        r0: 0.063, r1: 0.066, rBell: 0.086, rCuff: 0.035, end: 1.01, depth: 0.78, ripple: 0.018,
+        r0: 0.054, r1: 0.058, rBell: 0.066, rCuff: 0.033, end: 1.0, depth: 0.74, ripple: 0.014,
       }),
       makeSleeve(char, -1, {
         id: 'kimonoSleeves', role: 'primary', color: '#b96d7d', trimColor: '#e0b0b8',
-        r0: 0.063, r1: 0.066, rBell: 0.086, rCuff: 0.035, end: 1.01, depth: 0.78, ripple: 0.018,
+        r0: 0.054, r1: 0.058, rBell: 0.066, rCuff: 0.033, end: 1.0, depth: 0.74, ripple: 0.014,
       }),
     ];
     this.layers.midnightSleeves = [
@@ -1159,11 +1182,21 @@ export class Wardrobe {
     this.layers.loungeSleeves = [
       makeSleeve(char, 1, {
         id: 'loungeSleeves', role: 'secondary', color: '#e8ddcb', trimColor: '#b9aa96',
-        r0: 0.061, r1: 0.058, rBell: 0.069, rCuff: 0.035, end: 1.00, depth: 0.9, ripple: 0.014,
+        r0: 0.058, r1: 0.056, rBell: 0.063, rCuff: 0.034, end: 1.00, depth: 0.84, ripple: 0.012,
       }),
       makeSleeve(char, -1, {
         id: 'loungeSleeves', role: 'secondary', color: '#e8ddcb', trimColor: '#b9aa96',
-        r0: 0.061, r1: 0.058, rBell: 0.069, rCuff: 0.035, end: 1.00, depth: 0.9, ripple: 0.014,
+        r0: 0.058, r1: 0.056, rBell: 0.063, rCuff: 0.034, end: 1.00, depth: 0.84, ripple: 0.012,
+      }),
+    ];
+    this.layers.stageSleeves = [
+      makeSleeve(char, 1, {
+        id: 'stageSleeves', role: 'secondary', color: '#f1eee7', trimColor: '#d2b16b',
+        r0: 0.050, r1: 0.044, rBell: 0.046, rCuff: 0.031, end: 1.0, depth: 0.82, ripple: 0.006,
+      }),
+      makeSleeve(char, -1, {
+        id: 'stageSleeves', role: 'secondary', color: '#f1eee7', trimColor: '#d2b16b',
+        r0: 0.050, r1: 0.044, rBell: 0.046, rCuff: 0.031, end: 1.0, depth: 0.82, ripple: 0.006,
       }),
     ];
 
@@ -1223,7 +1256,7 @@ export class Wardrobe {
     // 既不会出现领带或短裙穿出，也不影响皮肤和头发。
     this.base.uHideSkirt.value = (active.has('longSkirt') || active.has('loungeSkirt')) ? 1 : 0;
     this.base.uHideMiniSkirt.value = 0;
-    this.base.uHideArms.value = ['kimonoSleeves', 'midnightSleeves', 'cyberSleeves', 'loungeSleeves']
+    this.base.uHideArms.value = ['kimonoSleeves', 'midnightSleeves', 'cyberSleeves', 'loungeSleeves', 'stageSleeves']
       .some((id) => active.has(id)) ? 1 : 0;
     this.base.uUnderShorts.value = active.has('underShorts') ? 1 : 0;
     const torsoId = ['midnightTorso', 'sakuraTorso', 'cyberTorso', 'loungeTorso', 'stageTorso']
