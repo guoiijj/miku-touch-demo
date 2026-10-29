@@ -1,0 +1,96 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>初音未来 · 开源 VRM 展厅</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0f14; }
+  body {
+    background:
+      radial-gradient(120% 90% at 50% 8%, #2a3542 0%, #131a22 45%, #070a0e 100%);
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  #hud {
+    position: fixed; left: 26px; bottom: 24px; color: #d8e3ee;
+    letter-spacing: .04em; pointer-events: none; text-shadow: 0 1px 12px rgba(0,0,0,.8);
+  }
+  #nav {
+    position: fixed; top: 22px; right: 26px; z-index: 6;
+  }
+  #nav a {
+    color: #9fb3c8; text-decoration: none; font-size: 12px; letter-spacing: .12em;
+    border-bottom: 1px solid rgba(159,179,200,.35); padding-bottom: 2px;
+    transition: color .2s, border-color .2s;
+  }
+  #nav a:hover { color: #39d7c6; border-color: #39d7c6; }
+  #hint {
+    position: fixed; right: 26px; bottom: 26px; color: #8fa3b6;
+    font-size: 11px; letter-spacing: .1em; opacity: .55; pointer-events: none;
+  }
+  #hud b { font-size: 15px; font-weight: 600; }
+  #hud span { display: block; font-size: 11.5px; opacity: .58; margin-top: 5px; }
+  #load {
+    position: fixed; inset: 0; display: grid; place-content: center; gap: 14px;
+    justify-items: center; color: #cfe0ef; font-size: 13px; letter-spacing: .18em;
+    background: #0b0f14; transition: opacity .5s ease; z-index: 5;
+  }
+  #load .bar { width: 220px; height: 2px; background: rgba(255,255,255,.12); overflow: hidden; }
+  #load .bar i { display: block; height: 100%; width: 0%; background: #39d7c6; transition: width .2s; }
+  #load.gone { opacity: 0; pointer-events: none; }
+
+  #motions {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+    z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 7px;
+  }
+  #motions .row {
+    display: flex; gap: 5px; padding: 6px; border-radius: 999px;
+    background: rgba(12,18,25,.66); border: 1px solid rgba(255,255,255,.08);
+    backdrop-filter: blur(12px); box-shadow: 0 10px 30px rgba(0,0,0,.38);
+  }
+  #motions button {
+    appearance: none; border: 0; background: transparent; color: #a9bccc;
+    font-family: inherit; font-size: 12px; letter-spacing: .08em;
+    padding: 7px 13px; border-radius: 999px; cursor: pointer;
+    transition: background .18s, color .18s, opacity .18s;
+  }
+  #motions button:hover:not(:disabled) { background: rgba(57,215,198,.14); color: #eafffb; }
+  #motions button.on { background: #39d7c6; color: #04201d; font-weight: 600; }
+  #motions button:disabled { opacity: .3; cursor: default; }
+  #motions small { font-size: 9.5px; color: #6f8397; letter-spacing: .06em; }
+  @media (max-width: 640px) {
+    #motions { bottom: 14px; width: calc(100% - 20px); }
+    #motions .row { flex-wrap: wrap; justify-content: center; border-radius: 18px; }
+    #hud { display: none; }
+    #hint { display: none; }
+  }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="nav"><a href="./index.html">← 返回衣橱</a></div>
+<div id="hud">
+  <b>HATSUNE MIKU · Tda V4X</b>
+  <span>VRM 模型 · 许可请以原发布页为准 · 渲染 @pixiv/three-vrm 3.5.5</span>
+</div>
+<div id="hint">拖拽旋转 · 滚轮缩放</div>
+<div id="motions" aria-label="动作">
+  <div class="row">
+    <button data-motion="idle" class="on">待机</button>
+    <button data-motion="greet" disabled>打招呼</button>
+    <button data-motion="wave" disabled>挥手</button>
+    <button data-motion="clap" disabled>拍手</button>
+    <button data-motion="dance" disabled>舞步</button>
+    <button data-motion="gangnam" disabled>骑马舞</button>
+  </div>
+  <small>动作 ruslanmv/3D-Avatar-Chatbot · Apache-2.0</small>
+</div>
+<div id="load"><div>LOADING MODEL</div><div class="bar"><i id="pbar"></i></div></div>
+<script type="module" src="./src/vrmShowcase.js"></script>
+</body>
+</html>

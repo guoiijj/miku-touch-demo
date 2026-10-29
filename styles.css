@@ -66,6 +66,8 @@ button { color: inherit; }
   font: 500 9px/1 var(--sans); letter-spacing: 0.17em; color: var(--ink-soft);
 }
 .top-status i { display: block; width: 26px; height: 1px; background: var(--line-strong); }
+.oss-link { pointer-events: auto; color: var(--teal); text-decoration: none; padding-bottom: 2px; border-bottom: 1px solid currentColor; }
+.oss-link:hover { color: var(--ink); }
 
 .lookbook, .style-panel {
   position: absolute; z-index: 8; top: 108px; bottom: 120px; width: 256px;

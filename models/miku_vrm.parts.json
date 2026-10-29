@@ -1,0 +1,14 @@
+{
+    "totalBytes":  45130884,
+    "parts":  [
+                  "part-00.bin",
+                  "part-01.bin",
+                  "part-02.bin",
+                  "part-03.bin",
+                  "part-04.bin",
+                  "part-05.bin",
+                  "part-06.bin",
+                  "part-07.bin"
+              ],
+    "note":  "Parts are concatenated in order by vrmShowcase.js."
+}

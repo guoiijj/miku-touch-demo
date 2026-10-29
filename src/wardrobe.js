@@ -131,7 +131,7 @@ function addClothAttributes(char) {
   const skinWeight = geom.attributes.skinWeight;
   for (let i = 0; i < n; i++) {
     const y = pos.getY(i);
-    if (hair[i] > 0.5 || y > 1.395 || y < 0.012) continue;
+    if (hair[i] > 0.5 || y > 1.445 || y < 0.012) continue;
     const r = col[i * 3], g = col[i * 3 + 1], b = col[i * 3 + 2];
     const skin = r > g + 15 && g > b + 5 && r > 78;
     cloth[i] = skin ? 0 : 1;
@@ -191,6 +191,7 @@ const BASE_FRAG = [
   'uniform float uHideMiniSkirt;',
   'uniform float uHideArms;',
   'uniform float uUnderShorts;',
+  'uniform float uStageClean;',
   'uniform float uBodyCenterZ;',
   'uniform vec2 uHideTorsoY;',
   'varying float vCloth;',
@@ -213,7 +214,11 @@ const BASE_RECOLOR = [
   '  float hipR = length(vec2(vGarmentPos.x, vGarmentPos.z - uBodyCenterZ));',
   '  float keepLeg = smoothstep(0.48, 0.82, vLeg) * (1.0 - smoothstep(0.104, 0.128, hipR));',
   '  miniCut *= 1.0 - keepLeg;',
+  '  float torsoCore = 1.0 - smoothstep(0.158, 0.180, length(vec2(vGarmentPos.x, vGarmentPos.z - uBodyCenterZ)));',
+  '  float geoCut = step(0.5, uHideTorso) * smoothstep(uHideTorsoY.x - 0.004, uHideTorsoY.x + 0.004, vGarmentPos.y)',
+  '    * (1.0 - smoothstep(1.292, 1.302, vGarmentPos.y)) * torsoCore;',
   '  if (vCloth > 0.5 && vHair < 0.25 && (torsoCut > 0.5 || skirtCut > 0.5 || miniCut > 0.5)) discard;',
+  '  if (geoCut > 0.5 && vHair < 0.35) discard;',
   '  if (step(0.5, uHideArms) * vArm * (1.0 - step(0.25, vHair)) > 0.5) discard;',
   '  float wLum = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));',
   '  float wSkin = smoothstep(0.035, 0.09, diffuseColor.r - diffuseColor.g);',
@@ -224,12 +229,26 @@ const BASE_RECOLOR = [
   '  float wLight = smoothstep(0.26, 0.56, wLum) * wNeutral;',
   '  float wMid = clamp((1.0 - wDark) * (1.0 - wLight) * wNeutral, 0.0, 1.0);',
   '  float wTeal = smoothstep(0.018, 0.07, diffuseColor.g - diffuseColor.r) * step(0.0, diffuseColor.b - diffuseColor.r);',
-  '  float gate = vCloth * (1.0 - wSkin) * (1.0 - vHair) * uStrength;',
+  '  float stageCollar = step(0.5, uHideTorso) * vCloth',
+  '    * smoothstep(1.306, 1.322, vGarmentPos.y) * (1.0 - smoothstep(1.424, 1.444, vGarmentPos.y))',
+  '    * (1.0 - smoothstep(0.050, 0.075, abs(vGarmentPos.x)));',
+  '  float gate = vCloth * (1.0 - wSkin) * (1.0 - vHair) * uStrength * (1.0 - stageCollar);',
   '  vec3 wc = diffuseColor.rgb;',
   '  wc = mix(wc, uPrimary, wDark * gate);',
   '  wc = mix(wc, uSecondary, wLight * gate);',
   '  wc = mix(wc, uMid, wMid * gate * 0.82);',
   '  wc = mix(wc, uAccent, wTeal * gate * uAccentStrength);',
+  '  float stageArm = vArm * smoothstep(1.245, 1.285, vGarmentPos.y);',
+'  float stageCloth = vCloth * smoothstep(1.270, 1.292, vGarmentPos.y)',
+  '    * (1.0 - smoothstep(1.352, 1.368, vGarmentPos.y))',
+  '    * smoothstep(0.036, 0.062, abs(vGarmentPos.x));',
+  '  float stageShoulder = step(0.5, uStageClean) * max(stageArm, stageCloth)',
+  '    * clamp(wNeutral * smoothstep(0.20, 0.38, wLum) + 0.62 * wNeutral, 0.0, 1.0);',
+  '  wc = mix(wc, uSecondary * 0.985, stageShoulder * 0.98);',
+  '  float stageCap = step(0.5, uStageClean) * wSkin',
+  '    * smoothstep(1.250, 1.276, vGarmentPos.y) * (1.0 - smoothstep(1.354, 1.376, vGarmentPos.y))',
+  '    * smoothstep(0.062, 0.088, abs(vGarmentPos.x));',
+  '  wc = mix(wc, uSecondary * 0.985, stageCap * 0.96);',
   '  float wGrain = fract(sin(dot(floor(vGarmentPos * 820.0), vec3(12.9898, 78.233, 37.719))) * 43758.5453);',
   '  wc *= 0.988 + 0.024 * wGrain;',
   '  float shortsY = smoothstep(0.728, 0.742, vGarmentPos.y) * (1.0 - smoothstep(0.993, 1.003, vGarmentPos.y));',
@@ -243,6 +262,8 @@ const BASE_RECOLOR = [
 
 function installBaseShader(char) {
   const material = char.mat;
+  material.side = THREE.DoubleSide;
+  material.needsUpdate = true;
   const uniforms = {
     uPrimary: { value: color(COLOR_FALLBACK.primary) },
     uSecondary: { value: color(COLOR_FALLBACK.secondary) },
@@ -255,6 +276,7 @@ function installBaseShader(char) {
     uHideMiniSkirt: { value: 0 },
     uHideArms: { value: 0 },
     uUnderShorts: { value: 0 },
+    uStageClean: { value: 0 },
     uBodyCenterZ: { value: BODY_CENTER_Z },
     uHideTorsoY: { value: new THREE.Vector2(0.90, 1.33) },
   };
@@ -633,6 +655,653 @@ function makeSkirtGeometry(char, opts) {
   return g;
 }
 
+function makeSkirtCloth(char, mesh, opts) {
+  const seg = opts.segments ?? 112;
+  const rings = opts.rings ?? 28;
+  const anchorRings = opts.anchorRings ?? 2;
+  const softAnchorRings = opts.softAnchorRings ?? 0;
+  const geometry = mesh.geometry;
+  const position = geometry.attributes.position;
+  const rest = new Float32Array(position.array);
+  const count = position.count;
+  const world = new Float32Array(count * 3);
+  const previous = new Float32Array(count * 3);
+  const target = new Float32Array(count * 3);
+  const inverseMass = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    const ring = Math.floor(i / seg);
+    if (ring <= anchorRings) {
+      inverseMass[i] = 0;
+    } else if (ring <= anchorRings + softAnchorRings) {
+      const t = (ring - anchorRings) / Math.max(1, softAnchorRings);
+      inverseMass[i] = 0.16 + 0.28 * t;
+    } else {
+      inverseMass[i] = 1;
+    }
+  }
+  const targetRadius = new Float32Array(count);
+  const axisW = new Float32Array((rings + 1) * 3);
+  const ringAxis = new Float32Array((rings + 1) * 2);
+  const upAxis = new THREE.Vector3(0, 1, 0);
+  for (let r = 0; r <= rings; r++) {
+    let sumX = 0, sumZ = 0;
+    for (let s = 0; s < seg; s++) {
+      const i = r * seg + s;
+      sumX += rest[i * 3];
+      sumZ += rest[i * 3 + 2];
+    }
+    ringAxis[r * 2] = sumX / seg;
+    ringAxis[r * 2 + 1] = sumZ / seg;
+  }
+
+  const ea = [], eb = [], el = [], ek = [];
+  const pushEdge = (a, b, stiffness) => {
+    if (inverseMass[a] === 0 && inverseMass[b] === 0) return;
+    const dx = rest[a * 3] - rest[b * 3];
+    const dy = rest[a * 3 + 1] - rest[b * 3 + 1];
+    const dz = rest[a * 3 + 2] - rest[b * 3 + 2];
+    ea.push(a); eb.push(b); el.push(Math.hypot(dx, dy, dz)); ek.push(stiffness);
+  };
+  for (let r = 0; r <= rings; r++) {
+    for (let s = 0; s < seg; s++) {
+      const a = r * seg + s;
+      pushEdge(a, r * seg + (s + 1) % seg, 0.92);
+    }
+  }
+  for (let r = 0; r < rings; r++) {
+    for (let s = 0; s < seg; s++) {
+      const a = r * seg + s;
+      pushEdge(a, a + seg, 0.94);
+      pushEdge(a, (r + 1) * seg + (s + 1) % seg, 0.28);
+      pushEdge(r * seg + (s + 1) % seg, a + seg, 0.28);
+    }
+  }
+  const edgeA = new Uint16Array(ea), edgeB = new Uint16Array(eb);
+  const edgeRest = new Float32Array(el), edgeK = new Float32Array(ek);
+  const edgeCount = edgeA.length;
+
+  const boneByName = {};
+  for (const bone of char.skeleton.bones) {
+    boneByName[String(bone.name || '').replace(/^mixamorig[:_]?/i, '').toLowerCase()] = bone;
+  }
+  const hipBone = char.hipsBone;
+  const hipIndex = char.skeleton.bones.indexOf(hipBone);
+  const H = new THREE.Matrix4();
+  const HInv = new THREE.Matrix4();
+  const v = new THREE.Vector3();
+  const colliders = [];
+  const colliderCount = 13;
+  for (let i = 0; i < colliderCount; i++) colliders.push([0, 0, 0, 0, 0, 0, 0, 0]);
+
+  function refreshMatrices() {
+    mesh.updateWorldMatrix(true, false);
+    hipBone.updateWorldMatrix(true, true);
+    H.multiplyMatrices(mesh.matrixWorld, hipBone.matrixWorld)
+      .multiply(char.skeleton.boneInverses[hipIndex])
+      .multiply(mesh.bindMatrix);
+    HInv.copy(H).invert();
+  }
+
+  function setCollider(slot, a, b, radiusA, radiusB = radiusA) {
+    const out = colliders[slot];
+    if (a) {
+      const ae = a.matrixWorld.elements;
+      out[0] = ae[12]; out[1] = ae[13]; out[2] = ae[14];
+    } else {
+      out[0] = out[1] = out[2] = 0;
+    }
+    if (b) {
+      const be = b.matrixWorld.elements;
+      out[3] = be[12]; out[4] = be[13]; out[5] = be[14];
+    } else {
+      out[3] = out[0]; out[4] = out[1]; out[5] = out[2];
+    }
+    out[6] = radiusA;
+    out[7] = radiusB;
+  }
+
+  function setColliderPoints(slot, ax, ay, az, bx, by, bz, radiusA, radiusB = radiusA) {
+    const out = colliders[slot];
+    out[0] = ax; out[1] = ay; out[2] = az;
+    out[3] = bx; out[4] = by; out[5] = bz;
+    out[6] = radiusA;
+    out[7] = radiusB;
+  }
+
+  function buildColliders() {
+    const hips = boneByName.hips || hipBone;
+    const spine = boneByName.spine;
+    const lu = boneByName.leftupleg, ll = boneByName.leftleg, lf = boneByName.leftfoot, lt = boneByName.lefttoebase;
+    const ru = boneByName.rightupleg, rl = boneByName.rightleg, rf = boneByName.rightfoot, rt = boneByName.righttoebase;
+    const lfa = boneByName.leftforearm, lh = boneByName.lefthand;
+    const rfa = boneByName.rightforearm, rh = boneByName.righthand;
+    setCollider(0, hips, spine, 0.138);
+    setCollider(1, lu, ll, 0.116, 0.082);
+    setCollider(2, ll, lf, 0.080, 0.068);
+    setCollider(3, lf, lt, 0.078, 0.070);
+    setCollider(4, ru, rl, 0.124, 0.086);
+    setCollider(5, rl, rf, 0.082, 0.070);
+    setCollider(6, rf, rt, 0.078, 0.070);
+    setCollider(7, hips, lu, 0.150, 0.120);
+    setCollider(8, hips, ru, 0.150, 0.120);
+    if (lfa && lh) {
+      setCollider(9, lfa, lh, 0.055, 0.050);
+      const ae = lfa.matrixWorld.elements, he = lh.matrixWorld.elements;
+      let dx = he[12] - ae[12], dy = he[13] - ae[13], dz = he[14] - ae[14];
+      const dl = Math.hypot(dx, dy, dz) || 1;
+      dx /= dl; dy /= dl; dz /= dl;
+      setColliderPoints(11, he[12], he[13], he[14], he[12] + dx * 0.075, he[13] + dy * 0.075, he[14] + dz * 0.075, 0.054, 0.038);
+    }
+    if (rfa && rh) {
+      setCollider(10, rfa, rh, 0.055, 0.050);
+      const ae = rfa.matrixWorld.elements, he = rh.matrixWorld.elements;
+      let dx = he[12] - ae[12], dy = he[13] - ae[13], dz = he[14] - ae[14];
+      const dl = Math.hypot(dx, dy, dz) || 1;
+      dx /= dl; dy /= dl; dz /= dl;
+      setColliderPoints(12, he[12], he[13], he[14], he[12] + dx * 0.075, he[13] + dy * 0.075, he[14] + dz * 0.075, 0.054, 0.038);
+    }
+  }
+
+  function updateTargets() {
+    const e = H.elements;
+    upAxis.set(e[4], e[5], e[6]).normalize();
+    for (let r = 0; r <= rings; r++) {
+      let sumY = 0;
+      for (let s = 0; s < seg; s++) sumY += rest[(r * seg + s) * 3 + 1];
+      v.set(ringAxis[r * 2], sumY / seg, ringAxis[r * 2 + 1]).applyMatrix4(H);
+      axisW[r * 3] = v.x;
+      axisW[r * 3 + 1] = v.y;
+      axisW[r * 3 + 2] = v.z;
+    }
+    for (let i = 0; i < count; i++) {
+      v.set(rest[i * 3], rest[i * 3 + 1], rest[i * 3 + 2]).applyMatrix4(H);
+      target[i * 3] = v.x;
+      target[i * 3 + 1] = v.y;
+      target[i * 3 + 2] = v.z;
+      const ao = Math.floor(i / seg) * 3;
+      let dx = v.x - axisW[ao];
+      let dy = v.y - axisW[ao + 1];
+      let dz = v.z - axisW[ao + 2];
+      const axial = dx * upAxis.x + dy * upAxis.y + dz * upAxis.z;
+      dx -= upAxis.x * axial; dy -= upAxis.y * axial; dz -= upAxis.z * axial;
+      targetRadius[i] = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+  }
+
+  function reset() {
+    refreshMatrices();
+    updateTargets();
+    projectTargetsToBody();
+    for (let i = 0; i < count; i++) {
+      world[i * 3] = previous[i * 3] = target[i * 3];
+      world[i * 3 + 1] = previous[i * 3 + 1] = target[i * 3 + 1];
+      world[i * 3 + 2] = previous[i * 3 + 2] = target[i * 3 + 2];
+    }
+    dirty = false;
+  }
+
+  const targetSlots = [1, 2, 4, 5];
+  const projNeed = new Float32Array(count);
+  const projSmooth = new Float32Array(count);
+  const projNx = new Float32Array(count);
+  const projNy = new Float32Array(count);
+  const projNz = new Float32Array(count);
+  const projSx = new Float32Array(count);
+  const projSy = new Float32Array(count);
+  const projSz = new Float32Array(count);
+  const projKernel = [0.46, 0.26, 0.13, 0.07, 0.04];
+  const projLim = new Float32Array(count);
+  const projDone = new Float32Array(count);
+  const relaxTmp = new Float32Array(count * 3);
+
+  function relaxSurface(amount) {
+    relaxTmp.set(world);
+    for (let r = anchorRings + 1; r <= rings; r++) {
+      const base = r * seg;
+      for (let s = 0; s < seg; s++) {
+        const i = base + s;
+        if (inverseMass[i] === 0) continue;
+        const o = i * 3;
+        const sl = base + ((s + seg - 1) % seg);
+        const sr = base + ((s + 1) % seg);
+        let ax = world[sl * 3] + world[sr * 3];
+        let ay = world[sl * 3 + 1] + world[sr * 3 + 1];
+        let az = world[sl * 3 + 2] + world[sr * 3 + 2];
+        let cnt = 2;
+        if (r > anchorRings + 1) {
+          const u = i - seg;
+          ax += world[u * 3]; ay += world[u * 3 + 1]; az += world[u * 3 + 2]; cnt++;
+        }
+        if (r < rings) {
+          const d = i + seg;
+          ax += world[d * 3]; ay += world[d * 3 + 1]; az += world[d * 3 + 2]; cnt++;
+        }
+        const k = amount * Math.min(1, inverseMass[i]);
+        relaxTmp[o] = world[o] + (ax / cnt - world[o]) * k;
+        relaxTmp[o + 1] = world[o + 1] + (ay / cnt - world[o + 1]) * k;
+        relaxTmp[o + 2] = world[o + 2] + (az / cnt - world[o + 2]) * k;
+      }
+    }
+    world.set(relaxTmp);
+  }
+
+  function targetClearance(x, y, z) {
+    let best = 0;
+    let nx = 0, ny = 0, nz = 0;
+    for (let k = 0; k < targetSlots.length; k++) {
+      const ca = colliders[targetSlots[k]];
+      if (ca[6] <= 0 && ca[7] <= 0) continue;
+      const abx = ca[3] - ca[0], aby = ca[4] - ca[1], abz = ca[5] - ca[2];
+      const len2 = abx * abx + aby * aby + abz * abz;
+      let t = len2 > 1e-10 ? ((x - ca[0]) * abx + (y - ca[1]) * aby + (z - ca[2]) * abz) / len2 : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const dx = x - (ca[0] + abx * t), dy = y - (ca[1] + aby * t), dz = z - (ca[2] + abz * t);
+      const dd = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+      const pen = ca[6] + (ca[7] - ca[6]) * t + 0.02 - dd;
+      if (pen > best) {
+        best = pen;
+        nx = dx / dd; ny = dy / dd; nz = dz / dd;
+      }
+    }
+    targetClearance.nx = nx;
+    targetClearance.ny = ny;
+    targetClearance.nz = nz;
+    return best;
+  }
+
+  function projectTargetsToBody() {
+    projDone.fill(0);
+    for (let pass = 0; pass < 4; pass++) {
+      const scale = pass === 0 ? 1 : 0.9;
+      for (let i = 0; i < count; i++) {
+        const ring = Math.floor(i / seg);
+        if (ring <= anchorRings) { projNeed[i] = 0; projLim[i] = 0; continue; }
+        const o = i * 3;
+        const pen = targetClearance(target[o], target[o + 1], target[o + 2]);
+        projNeed[i] = pen > 0 ? pen * scale : 0;
+        if (pass === 0) projLim[i] = Math.min(0.1, projNeed[i] + 0.005);
+        projNx[i] = targetClearance.nx;
+        projNy[i] = targetClearance.ny;
+        projNz[i] = targetClearance.nz;
+      }
+      for (let r = anchorRings + 1; r <= rings; r++) {
+        const base = r * seg;
+        for (let s = 0; s < seg; s++) {
+          let sum = 0, sx = 0, sy = 0, sz = 0, wsum = 0;
+          for (let k = -4; k <= 4; k++) {
+            const w = projKernel[Math.abs(k)];
+            const idx = base + ((((s + k) % seg) + seg) % seg);
+            sum += projNeed[idx] * w;
+            sx += projNx[idx] * w;
+            sy += projNy[idx] * w;
+            sz += projNz[idx] * w;
+            wsum += w;
+          }
+          const avg = sum / wsum;
+          projSmooth[base + s] = Math.max(avg, projNeed[base + s] * 0.62);
+          projSx[base + s] = sx / wsum;
+          projSy[base + s] = sy / wsum;
+          projSz[base + s] = sz / wsum;
+        }
+      }
+      for (let r = anchorRings + 1; r <= rings; r++) {
+        const base = r * seg;
+        for (let s = 0; s < seg; s++) {
+          const i = base + s;
+          const up = r - 1 > anchorRings ? projSmooth[i - seg] : projSmooth[i];
+          const dn = r + 1 <= rings ? projSmooth[i + seg] : projSmooth[i];
+          let val = projSmooth[i] * 0.6 + up * 0.2 + dn * 0.2;
+          val = Math.max(val, projSmooth[i] * 0.88);
+          val = Math.min(0.26, val);
+          const room = projLim[i] - projDone[i];
+          if (room <= 1e-5) continue;
+          if (val > room) val = room;
+          projDone[i] += val;
+          const o = i * 3, ao = r * 3;
+          const upN = r - 1 > anchorRings ? i - seg : i;
+          const dnN = r + 1 <= rings ? i + seg : i;
+          let nx = projSx[i] * 0.6 + projSx[upN] * 0.2 + projSx[dnN] * 0.2;
+          let ny = projSy[i] * 0.6 + projSy[upN] * 0.2 + projSy[dnN] * 0.2;
+          let nz = projSz[i] * 0.6 + projSz[upN] * 0.2 + projSz[dnN] * 0.2;
+          let rx = target[o] - axisW[ao];
+          let ry = target[o + 1] - axisW[ao + 1];
+          let rz = target[o + 2] - axisW[ao + 2];
+          const axial = rx * upAxis.x + ry * upAxis.y + rz * upAxis.z;
+          rx -= upAxis.x * axial; ry -= upAxis.y * axial; rz -= upAxis.z * axial;
+          const rl = Math.sqrt(rx * rx + ry * ry + rz * rz) || 1;
+          nx = nx * 0.82 + (rx / rl) * 0.18;
+          ny = ny * 0.82 + (ry / rl) * 0.18;
+          nz = nz * 0.82 + (rz / rl) * 0.18;
+          ny = ny < -0.35 ? -0.35 : ny > 0.35 ? 0.35 : ny;
+          const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+          target[o] += (nx / len) * val;
+          target[o + 1] += (ny / len) * val;
+          target[o + 2] += (nz / len) * val;
+        }
+      }
+    }
+  }
+
+  function pinAnchors() {
+    for (let i = 0, r = 0; r <= anchorRings; r++) {
+      for (let s = 0; s < seg; s++, i++) {
+        world[i * 3] = previous[i * 3] = target[i * 3];
+        world[i * 3 + 1] = previous[i * 3 + 1] = target[i * 3 + 1];
+        world[i * 3 + 2] = previous[i * 3 + 2] = target[i * 3 + 2];
+      }
+    }
+  }
+
+  function collideVertex(i, maxMove = 1e9) {
+    const o = i * 3;
+    let x = world[o], y = world[o + 1], z = world[o + 2];
+    const ao = Math.floor(i / seg) * 3;
+    let rx = target[o] - axisW[ao];
+    let ry = target[o + 1] - axisW[ao + 1];
+    let rz = target[o + 2] - axisW[ao + 2];
+    const axial = rx * upAxis.x + ry * upAxis.y + rz * upAxis.z;
+    rx -= upAxis.x * axial; ry -= upAxis.y * axial; rz -= upAxis.z * axial;
+    let radial = Math.hypot(rx, ry, rz);
+    if (radial < 1e-6) {
+      rx = x - axisW[ao]; ry = y - axisW[ao + 1]; rz = z - axisW[ao + 2];
+    }
+    radial = Math.hypot(rx, ry, rz);
+    if (radial < 1e-6) {
+      const he = hipBone.matrixWorld.elements;
+      rx = x - he[12]; ry = 0; rz = z - he[14];
+      radial = Math.hypot(rx, rz) || 1;
+    }
+    rx /= radial; ry /= radial; rz /= radial;
+    const startX = x, startY = y, startZ = z;
+    for (let pass = 0; pass < 6; pass++) {
+      let moved = false;
+      for (let c = 0; c < colliders.length; c++) {
+        const ca = colliders[c];
+        if (ca[6] <= 0 && ca[7] <= 0) continue;
+        const abx = ca[3] - ca[0], aby = ca[4] - ca[1], abz = ca[5] - ca[2];
+        const len2 = abx * abx + aby * aby + abz * abz;
+        let t = len2 > 1e-10 ? ((x - ca[0]) * abx + (y - ca[1]) * aby + (z - ca[2]) * abz) / len2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const cx = ca[0] + abx * t, cy = ca[1] + aby * t, cz = ca[2] + abz * t;
+        const dx = x - cx, dy = y - cy, dz = z - cz;
+        const radius = ca[6] + (ca[7] - ca[6]) * t;
+        const rr = radius + 0.010;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 >= rr * rr) continue;
+        const dist = Math.sqrt(d2);
+        const push = rr - dist + 0.0015;
+        let ux = rx, uy = ry, uz = rz;
+        if (dist > 1e-6 && dist > radius * 0.45) {
+          const nx = dx / dist, ny = dy / dist, nz = dz / dist;
+          const align = ux * nx + uy * ny + uz * nz;
+          if (align < 0.6) {
+            const w = Math.min(1, (0.6 - align) / 1.2);
+            ux = ux * (1 - w) + nx * w;
+            uy = uy * (1 - w) + ny * w;
+            uz = uz * (1 - w) + nz * w;
+            const ul = Math.sqrt(ux * ux + uy * uy + uz * uz) || 1;
+            ux /= ul; uy /= ul; uz /= ul;
+          }
+        }
+        x += ux * push; y += uy * push; z += uz * push;
+        moved = true;
+      }
+      if (!moved) break;
+      const mx = x - startX, my = y - startY, mz = z - startZ;
+      const md = Math.sqrt(mx * mx + my * my + mz * mz);
+      if (md > maxMove) {
+        const k = maxMove / md;
+        x = startX + mx * k; y = startY + my * k; z = startZ + mz * k;
+        break;
+      }
+    }
+    world[o] = x; world[o + 1] = y; world[o + 2] = z;
+  }
+
+  function solveEdges(iterations, shapeScale = 1) {
+    const shapeK = (opts.shapeStiffness ?? 0.022) * shapeScale;
+    for (let it = 0; it < iterations; it++) {
+      for (let e = 0; e < edgeCount; e++) {
+        const a = edgeA[e], b = edgeB[e];
+        const wa = inverseMass[a], wb = inverseMass[b];
+        if (wa + wb <= 0) continue;
+        const ao = a * 3, bo = b * 3;
+        let dx = world[bo] - world[ao];
+        let dy = world[bo + 1] - world[ao + 1];
+        let dz = world[bo + 2] - world[ao + 2];
+        const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (len < 1e-7) continue;
+        const correction = (len - edgeRest[e]) / len * edgeK[e];
+        dx *= correction; dy *= correction; dz *= correction;
+        const total = wa + wb;
+        const ka = wa / total, kb = wb / total;
+        world[ao] += dx * ka; world[ao + 1] += dy * ka; world[ao + 2] += dz * ka;
+        world[bo] -= dx * kb; world[bo + 1] -= dy * kb; world[bo + 2] -= dz * kb;
+      }
+      for (let i = 0; i < count; i++) {
+        if (inverseMass[i] === 0) continue;
+        const o = i * 3;
+        const w = inverseMass[i];
+        world[o] += (target[o] - world[o]) * shapeK * w;
+        world[o + 1] += (target[o + 1] - world[o + 1]) * shapeK * w;
+        world[o + 2] += (target[o + 2] - world[o + 2]) * shapeK * w;
+      }
+    }
+  }
+
+  function solveCollisions(maxMove) {
+    for (let i = 0; i < count; i++) {
+      if (inverseMass[i] > 0) collideVertex(i, maxMove);
+    }
+  }
+
+  const pushX = new Float32Array(count);
+  const pushY = new Float32Array(count);
+  const pushZ = new Float32Array(count);
+
+  function solveCollisionsSmooth(maxMove, smooth) {
+    for (let i = 0; i < count; i++) {
+      pushX[i] = 0; pushY[i] = 0; pushZ[i] = 0;
+      if (inverseMass[i] <= 0) continue;
+      const o = i * 3;
+      const x0 = world[o], y0 = world[o + 1], z0 = world[o + 2];
+      collideVertex(i, maxMove);
+      pushX[i] = world[o] - x0;
+      pushY[i] = world[o + 1] - y0;
+      pushZ[i] = world[o + 2] - z0;
+      world[o] = x0; world[o + 1] = y0; world[o + 2] = z0;
+    }
+    for (let r = anchorRings + 1; r <= rings; r++) {
+      const base = r * seg;
+      for (let s = 0; s < seg; s++) {
+        const i = base + s;
+        if (inverseMass[i] === 0) continue;
+        let ax = 0, ay = 0, az = 0, wsum = 0;
+        for (let k = -4; k <= 4; k++) {
+          const w = projKernel[Math.abs(k)];
+          const idx = base + ((((s + k) % seg) + seg) % seg);
+          ax += pushX[idx] * w; ay += pushY[idx] * w; az += pushZ[idx] * w;
+          wsum += w;
+        }
+        let dx = pushX[i] * (1 - smooth) + (ax / wsum) * smooth;
+        let dy = pushY[i] * (1 - smooth) + (ay / wsum) * smooth;
+        let dz = pushZ[i] * (1 - smooth) + (az / wsum) * smooth;
+        const own = Math.sqrt(pushX[i] * pushX[i] + pushY[i] * pushY[i] + pushZ[i] * pushZ[i]);
+        const got = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const floor = own * 0.62;
+        if (got > 1e-6 && got < floor) {
+          const k = floor / got;
+          dx *= k; dy *= k; dz *= k;
+        }
+        const o = i * 3;
+        world[o] += dx; world[o + 1] += dy; world[o + 2] += dz;
+      }
+    }
+  }
+
+  function limitStretch(maxStrain) {
+    for (let pass = 0; pass < 2; pass++) {
+      for (let e = 0; e < edgeCount; e++) {
+        const a = edgeA[e], b = edgeB[e];
+        const wa = inverseMass[a], wb = inverseMass[b];
+        if (wa + wb <= 0) continue;
+        const ao = a * 3, bo = b * 3;
+        let dx = world[bo] - world[ao];
+        let dy = world[bo + 1] - world[ao + 1];
+        let dz = world[bo + 2] - world[ao + 2];
+        const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const cap = edgeRest[e] * maxStrain;
+        if (len <= cap || len < 1e-7) continue;
+        const correction = (len - cap) / len * 0.85;
+        dx *= correction; dy *= correction; dz *= correction;
+        const total = wa + wb;
+        world[ao] += dx * (wa / total); world[ao + 1] += dy * (wa / total); world[ao + 2] += dz * (wa / total);
+        world[bo] -= dx * (wb / total); world[bo + 1] -= dy * (wb / total); world[bo + 2] -= dz * (wb / total);
+      }
+    }
+  }
+
+  function clampRadial(floor) {
+    for (let i = 0; i < count; i++) {
+      if (inverseMass[i] === 0) continue;
+      const o = i * 3, ao = Math.floor(i / seg) * 3;
+      const minR = targetRadius[i] * floor;
+      if (minR <= 1e-5) continue;
+      let dx = world[o] - axisW[ao];
+      let dy = world[o + 1] - axisW[ao + 1];
+      let dz = world[o + 2] - axisW[ao + 2];
+      const axial = dx * upAxis.x + dy * upAxis.y + dz * upAxis.z;
+      dx -= upAxis.x * axial; dy -= upAxis.y * axial; dz -= upAxis.z * axial;
+      const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (len >= minR || len < 1e-6) continue;
+      const k = minR / len;
+      world[o] = axisW[ao] + dx * k + upAxis.x * axial;
+      world[o + 1] = axisW[ao + 1] + dy * k + upAxis.y * axial;
+      world[o + 2] = axisW[ao + 2] + dz * k + upAxis.z * axial;
+    }
+  }
+
+  function simulate(h, time) {
+    pinAnchors();
+    const damp = Math.exp(-0.8 * h);
+    const gravity = -2.1 * h * h;
+    const windX = Math.sin(time * 0.83 + 0.7) * 0.11 * h * h;
+    const windZ = Math.cos(time * 0.61 - 0.2) * 0.08 * h * h;
+    const maxStep = 0.055;
+    for (let i = 0; i < count; i++) {
+      if (inverseMass[i] === 0) continue;
+      const o = i * 3;
+      let vx = (world[o] - previous[o]) * damp;
+      let vy = (world[o + 1] - previous[o + 1]) * damp;
+      let vz = (world[o + 2] - previous[o + 2]) * damp;
+      const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
+      if (speed > maxStep) {
+        const k = maxStep / speed;
+        vx *= k; vy *= k; vz *= k;
+      }
+      previous[o] = world[o]; previous[o + 1] = world[o + 1]; previous[o + 2] = world[o + 2];
+      world[o] += vx + windX;
+      world[o + 1] += vy + gravity;
+      world[o + 2] += vz + windZ;
+    }
+    clampRadial(opts.radialFloor ?? 0.86);
+    solveEdges(8);
+    for (let pass = 0; pass < 3; pass++) {
+      solveCollisions(0.022);
+      solveEdges(2, 0.08);
+    }
+    solveEdges(2, 0.35);
+    solveCollisions(0.2);
+    limitStretch(1.55);
+    for (let pass = 0; pass < 7; pass++) {
+      solveCollisionsSmooth(0.06, 0.86);
+      relaxSurface(0.12);
+      clampRadial(opts.radialFloor ?? 0.86);
+    }
+    solveCollisions(0.02);
+  }
+
+  function writeBack() {
+    for (let i = 0; i < count; i++) {
+      v.set(world[i * 3], world[i * 3 + 1], world[i * 3 + 2]).applyMatrix4(HInv);
+      position.setXYZ(i, v.x, v.y, v.z);
+    }
+    position.needsUpdate = true;
+    normalTick++;
+    if (normalTick % 2 === 0) geometry.computeVertexNormals();
+  }
+
+  function measurePenetration() {
+    let countBad = 0, maxDepth = 0;
+    for (let i = 0; i < count; i++) {
+      if (inverseMass[i] === 0) continue;
+      const o = i * 3, x = world[o], y = world[o + 1], z = world[o + 2];
+      for (let c = 0; c < colliders.length; c++) {
+        const ca = colliders[c];
+        if (ca[6] <= 0 && ca[7] <= 0) continue;
+        const abx = ca[3] - ca[0], aby = ca[4] - ca[1], abz = ca[5] - ca[2];
+        const len2 = abx * abx + aby * aby + abz * abz;
+        let t = len2 > 1e-10 ? ((x - ca[0]) * abx + (y - ca[1]) * aby + (z - ca[2]) * abz) / len2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const dx = x - (ca[0] + abx * t), dy = y - (ca[1] + aby * t), dz = z - (ca[2] + abz * t);
+        const radius = ca[6] + (ca[7] - ca[6]) * t;
+        const depth = radius + 0.006 - Math.hypot(dx, dy, dz);
+        if (depth > 1e-4) { countBad++; if (depth > maxDepth) maxDepth = depth; break; }
+      }
+    }
+    return { count: countBad, maxDepth };
+  }
+
+  let dirty = true;
+  let normalTick = 0;
+  let lastMs = 0;
+  return {
+    reset,
+    update(dt, time, active) {
+      if (!active || !mesh.visible) { dirty = true; return; }
+      const start = performance.now();
+      refreshMatrices();
+      if (dirty) reset();
+      updateTargets();
+      buildColliders();
+      projectTargetsToBody();
+      const frameDt = Math.min(Math.max(dt, 0.001), 1 / 30);
+      const steps = frameDt > 0.024 ? 3 : 2;
+      const h = frameDt / steps;
+      for (let s = 0; s < steps; s++) simulate(h, time + s * h);
+      writeBack();
+      lastMs = performance.now() - start;
+    },
+    measurePenetration,
+    debugEdge(a, b) {
+      for (let e = 0; e < edgeCount; e++) {
+        if ((edgeA[e] === a && edgeB[e] === b) || (edgeA[e] === b && edgeB[e] === a)) {
+          const lo = a * 3, hi = b * 3;
+          const dx = world[hi] - world[lo], dy = world[hi + 1] - world[lo + 1], dz = world[hi + 2] - world[lo + 2];
+          return { rest: edgeRest[e], len: Math.hypot(dx, dy, dz), k: edgeK[e], wa: inverseMass[a], wb: inverseMass[b] };
+        }
+      }
+      return null;
+    },
+    debugVertex(i) {
+      const o = i * 3;
+      return {
+        world: [world[o], world[o + 1], world[o + 2]],
+        target: [target[o], target[o + 1], target[o + 2]],
+        rest: [rest[o], rest[o + 1], rest[o + 2]],
+        inverseMass: inverseMass[i],
+        targetRadius: targetRadius[i],
+      };
+    },
+    debugColliders() {
+      return colliders.map((c) => c.slice());
+    },
+    get vertices() { return count; },
+    get edges() { return edgeCount; },
+    get lastMs() { return lastMs; },
+  };
+}
+
 function makeSkirt(char, opts) {
   const uniforms = {
     uTime: { value: 0 },
@@ -660,10 +1329,6 @@ function makeSkirt(char, opts) {
         '#include <begin_vertex>',
         '  float skirtT = clamp((uWaistY - position.y) / max(0.001, uWaistY - uHemY), 0.0, 1.0);',
         '  vSkirtT = skirtT;',
-        '  transformed.x += uSway.x * skirtT * skirtT * 0.85;',
-        '  transformed.z += uSway.z * skirtT * skirtT * 0.85;',
-        '  transformed.x += sin(uTime * 1.35 + position.y * 10.0 + position.x * 7.0) * 0.0042 * skirtT;',
-        '  transformed.z += cos(uTime * 1.17 + position.y * 8.0 + position.z * 9.0) * 0.0038 * skirtT;',
         '  vSkirtPos = transformed;',
       ].join('\n'));
     shader.fragmentShader = shader.fragmentShader
@@ -677,11 +1342,13 @@ function makeSkirt(char, opts) {
       ].join('\n'))
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = 0.9;');
   };
-  material.customProgramCacheKey = () => 'miku-wardrobe-skirt-v2';
+  material.customProgramCacheKey = () => 'miku-wardrobe-skirt-v3';
   const mesh = bindSkinned(char, makeSkirtGeometry(char, opts), material);
   mesh.visible = false;
   mesh.renderOrder = opts.transparent ? 5 : 3;
-  return { id: opts.id, mesh, material, uniforms, role: opts.role || 'primary' };
+  const layer = { id: opts.id, mesh, material, uniforms, role: opts.role || 'primary' };
+  if (opts.physics) layer.cloth = makeSkirtCloth(char, mesh, opts);
+  return layer;
 }
 
 function skinnedRingGeometry(char, y, height, radiusX, radiusZ, segments = 72, centerZ = BODY_CENTER_Z) {
@@ -720,28 +1387,37 @@ const TORSO_PROFILES = {
     [1.295, 0.154, 0.098],
     [1.325, 0.094, 0.080],
   ],
-  stage: [
-    [0.96, 0.120, 0.079],
-    [1.02, 0.116, 0.077],
-    [1.09, 0.121, 0.079],
-    [1.16, 0.134, 0.085],
-    [1.22, 0.151, 0.089],
-    [1.27, 0.168, 0.093],
-    [1.30, 0.132, 0.084],
-    [1.325, 0.083, 0.073],
-  ],
+    stage: [
+      [0.96, 0.140, 0.110, 0.000],
+      [1.02, 0.146, 0.116, 0.004],
+      [1.09, 0.122, 0.106, 0.010],
+      [1.16, 0.108, 0.102, 0.006],
+      [1.21, 0.112, 0.102, -0.001],
+      [1.25, 0.117, 0.100, -0.006],
+      [1.28, 0.106, 0.092, -0.012],
+      [1.30, 0.095, 0.084, -0.018],
+      [1.315, 0.085, 0.077, -0.024],
+      [1.33, 0.074, 0.068, -0.030],
+      [1.345, 0.063, 0.059, -0.035],
+      [1.36, 0.050, 0.046, -0.040],
+    ],
 };
 
 function profileAt(profile, y) {
-  if (y <= profile[0][0]) return [profile[0][1], profile[0][2]];
+  if (y <= profile[0][0]) return [profile[0][1], profile[0][2], profile[0][3] || 0];
   for (let i = 1; i < profile.length; i++) {
     if (y <= profile[i][0]) {
       const a = profile[i - 1], b = profile[i];
       const t = clamp01((y - a[0]) / (b[0] - a[0]));
-      return [a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+      return [
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+        (a[3] || 0) + ((b[3] || 0) - (a[3] || 0)) * t,
+      ];
     }
   }
-  return [profile[profile.length - 1][1], profile[profile.length - 1][2]];
+  const last = profile[profile.length - 1];
+  return [last[1], last[2], last[3] || 0];
 }
 
 function torsoGeometry(char, opts) {
@@ -751,6 +1427,7 @@ function torsoGeometry(char, opts) {
   const positions = [], normals = [], uvs = [], colors = [], indices = [];
   const y0 = opts.y0, y1 = opts.y1;
   const centerZ = opts.centerZ ?? BODY_CENTER_Z;
+  const neckStart = opts.neckStart ?? 0.38;
   const neckDrop = opts.neckDrop ?? 0.055;
   const shoulderDrop = opts.shoulderDrop ?? 0.066;
   const ease = opts.ease ?? 0.011;
@@ -760,8 +1437,8 @@ function torsoGeometry(char, opts) {
     for (let s = 0; s < seg; s++) {
       const a = (s / seg) * Math.PI * 2;
       const front = Math.max(0, Math.sin(a));
-      const side = Math.pow(Math.abs(Math.cos(a)), 1.7);
-      const topY = y1 - neckDrop * sstep(0.38, 1.0, front) - shoulderDrop * side;
+      const side = Math.pow(Math.abs(Math.cos(a)), 1.4);
+      const topY = y1 - neckDrop * sstep(neckStart, 1.0, front) - shoulderDrop * side;
       const y = y0 + (topY - y0) * t;
       const pr = profileAt(profile, y);
       const ripples = 1 + (opts.fold ?? 0.006) * Math.sin(a * (opts.pleatCount ?? 14) + 0.4) * Math.pow(t, 0.55);
@@ -769,7 +1446,8 @@ function torsoGeometry(char, opts) {
       const hemFlare = flare * Math.pow(1 - t, 2.2);
       const rx = (pr[0] + outer + hemFlare) * ripples;
       const rz = (pr[1] + outer * 0.72 + hemFlare * 0.8) * ripples;
-      positions.push(Math.cos(a) * rx, y, Math.sin(a) * rz + centerZ);
+      const ringCenterZ = centerZ + pr[2];
+      positions.push(Math.cos(a) * rx, y, Math.sin(a) * rz + ringCenterZ);
       normals.push(0, 0, 1);
       uvs.push(s / seg, t);
       const light = 0.88 + 0.12 * (0.5 + 0.5 * Math.cos(a - 0.62));
@@ -799,20 +1477,41 @@ function torsoGeometry(char, opts) {
     spine: byName.spine ?? byName.spine1 ?? 0,
     spine1: byName.spine1 ?? byName.spine ?? 0,
     spine2: byName.spine2 ?? byName.chest ?? 0,
+    neck: byName.neck ?? byName.spine2 ?? 0,
+    leftArm: byName.leftarm ?? byName.leftshoulder ?? 0,
+    rightArm: byName.rightarm ?? byName.rightshoulder ?? 0,
+    leftShoulder: byName.leftshoulder ?? byName.leftarm ?? 0,
+    rightShoulder: byName.rightshoulder ?? byName.rightarm ?? 0,
   };
   const n = positions.length / 3;
   const si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
   for (let i = 0; i < n; i++) {
+    const x = positions[i * 3];
     const y = positions[i * 3 + 1];
+    const ax = Math.abs(x);
     let w2 = sstep(1.10, 1.265, y);
     let w1 = sstep(0.985, 1.13, y) * (1 - w2);
     let ws = sstep(0.885, 1.005, y) * (1 - w2 - w1);
     let wh = Math.max(0, 1 - w2 - w1 - ws);
-    const total = w2 + w1 + ws + wh || 1;
-    si[i * 4] = bi.hips; sw[i * 4] = wh / total;
-    si[i * 4 + 1] = bi.spine; sw[i * 4 + 1] = ws / total;
-    si[i * 4 + 2] = bi.spine1; sw[i * 4 + 2] = w1 / total;
-    si[i * 4 + 3] = bi.spine2; sw[i * 4 + 3] = w2 / total;
+    const armGate = sstep(1.252, 1.335, y) * sstep(0.072, 0.150, ax);
+    const shoulderGate = sstep(1.272, 1.345, y) * sstep(0.036, 0.115, ax);
+    const neckGate = sstep(1.305, 1.352, y) * (1 - sstep(0.022, 0.086, ax));
+    const armW = armGate * 0.34;
+    const shoulderW = shoulderGate * 0.34;
+    const neckW = neckGate * 0.20;
+    const bodyScale = Math.max(0, 1 - armW - shoulderW - neckW);
+    wh *= bodyScale; ws *= bodyScale; w1 *= bodyScale; w2 *= bodyScale;
+    const candidates = [
+      [bi.hips, wh], [bi.spine, ws], [bi.spine1, w1], [bi.spine2, w2],
+      [bi.neck, neckW],
+      [x >= 0 ? bi.leftArm : bi.rightArm, armW],
+      [x >= 0 ? bi.leftShoulder : bi.rightShoulder, shoulderW],
+    ].sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const total = candidates.reduce((sum, item) => sum + item[1], 0) || 1;
+    for (let k = 0; k < 4; k++) {
+      si[i * 4 + k] = candidates[k][0];
+      sw[i * 4 + k] = candidates[k][1] / total;
+    }
   }
   g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
   g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
@@ -835,7 +1534,7 @@ function makeTorsoGarment(char, opts) {
     color: 0xffffff,
     roughness: opts.roughness ?? 0.87,
     metalness: opts.metalness ?? 0.01,
-    side: THREE.FrontSide,
+    side: opts.doubleSide ? THREE.DoubleSide : THREE.FrontSide,
     vertexColors: true,
   });
   material.onBeforeCompile = (shader) => {
@@ -870,7 +1569,7 @@ function makeTorsoGarment(char, opts) {
   mesh.renderOrder = 2;
   return {
     id: opts.id, mesh, material, uniforms, role: opts.role || 'primary',
-    y0: opts.y0, y1: opts.y1,
+    y0: opts.y0, y1: opts.y1, hideY1: opts.hideY1 ?? opts.y1,
   };
 }
 
@@ -1090,8 +1789,9 @@ export class Wardrobe {
 
     this.layers.longSkirt = makeSkirt(char, {
       id: 'longSkirt', role: 'primary', waistY: 1.005, hemY: 0.255,
-      waistRx: 0.134, waistRz: 0.091, hemR: 0.368, pleats: 24, pleatDepth: 0.024,
+      waistRx: 0.142, waistRz: 0.097, hemR: 0.368, pleats: 24, pleatDepth: 0.024,
       flare: 1.18, backDrop: 0.018, centerZ: BODY_CENTER_Z,
+      physics: true, anchorRings: 10, softAnchorRings: 4, shapeStiffness: 0.045, radialFloor: 0.94,
     });
     this.layers.loungeSkirt = makeSkirt(char, {
       id: 'loungeSkirt', role: 'mid', waistY: 0.992, hemY: 0.335,
@@ -1103,7 +1803,8 @@ export class Wardrobe {
       id: 'sheerOverskirt', role: 'secondary', waistY: 1.002, hemY: 0.225,
       waistRx: 0.138, waistRz: 0.094, hemR: 0.415, pleats: 32, pleatDepth: 0.015,
       flare: 1.26, backDrop: 0.025, centerZ: BODY_CENTER_Z,
-      transparent: true, opacity: 0.34, roughness: 0.72, metalness: 0.03,
+      transparent: true, opacity: 0.40, roughness: 0.72, metalness: 0.03,
+      physics: true, anchorRings: 9, softAnchorRings: 4, shapeStiffness: 0.038, radialFloor: 0.94,
     });
     this.layers.midnightTorso = makeTorsoGarment(char, {
       id: 'midnightTorso', role: 'primary', y0: 0.935, y1: 1.330,
@@ -1126,8 +1827,8 @@ export class Wardrobe {
       color: '#ddcdb8', trimColor: '#a99985', trimRole: 'mid', pocket: true, roughness: 0.97,
     });
     this.layers.stageTorso = makeTorsoGarment(char, {
-      id: 'stageTorso', role: 'secondary', y0: 0.975, y1: 1.328,
-      profile: 'stage', neckDrop: 0.082, shoulderDrop: 0.072, ease: 0.010, fold: 0.007,
+      id: 'stageTorso', role: 'secondary', y0: 0.962, y1: 1.352, hideY1: 1.238,
+      profile: 'stage', neckStart: 0.12, neckDrop: 0.054, shoulderDrop: 0.014, ease: 0.0015, fold: 0.0015,
       color: '#f1eee7', trimColor: '#d2b16b', goldLine: true, roughness: 0.72, metalness: 0.025,
     });
     this.layers.waistband = makeWaistBand(char, {
@@ -1250,6 +1951,12 @@ export class Wardrobe {
       if (Array.isArray(layer)) for (const item of layer) item.mesh.visible = on;
       else if (layer.mesh) layer.mesh.visible = on;
     }
+    for (const layer of Object.values(this.layers)) {
+      const items = Array.isArray(layer) ? layer : [layer];
+      for (const item of items) {
+        if (item && item.cloth && item.mesh.visible) item.cloth.reset();
+      }
+    }
     this.layers.utilityBuckle.mesh.visible = active.has('utilityBelt');
 
     // 长裙/上身衣片是“实穿”的独立衣层。把被它们覆盖的原模型布料挖掉，
@@ -1259,12 +1966,13 @@ export class Wardrobe {
     this.base.uHideArms.value = ['kimonoSleeves', 'midnightSleeves', 'cyberSleeves', 'loungeSleeves', 'stageSleeves']
       .some((id) => active.has(id)) ? 1 : 0;
     this.base.uUnderShorts.value = active.has('underShorts') ? 1 : 0;
+    this.base.uStageClean.value = active.has('stageTorso') ? 1 : 0;
     const torsoId = ['midnightTorso', 'sakuraTorso', 'cyberTorso', 'loungeTorso', 'stageTorso']
       .find((id) => active.has(id));
     this.base.uHideTorso.value = torsoId ? 1 : 0;
     if (torsoId) {
       const t = this.byId.get(torsoId);
-      this.base.uHideTorsoY.value.set(t.y0, t.y1);
+      this.base.uHideTorsoY.value.set(t.y0, t.hideY1 ?? t.y1);
     }
 
     this.state = {
@@ -1283,6 +1991,7 @@ export class Wardrobe {
 
   update(dt, time) {
     if (!this.ready) return;
+    const clothOn = !!this.current && this.current.id === 'stage';
     const yaw = this.char.body.rotation.y;
     const roll = this.char.hips.rotation.z || 0;
     const dyaw = Math.atan2(Math.sin(yaw - this.prevYaw), Math.cos(yaw - this.prevYaw));
@@ -1294,10 +2003,12 @@ export class Wardrobe {
     if (this.layers.longSkirt) {
       this.layers.longSkirt.uniforms.uTime.value = time;
       this.layers.longSkirt.uniforms.uSway.value.copy(this.sway);
+      if (this.layers.longSkirt.cloth) this.layers.longSkirt.cloth.update(dt, time, clothOn);
     }
     if (this.layers.sheerOverskirt) {
       this.layers.sheerOverskirt.uniforms.uTime.value = time * 0.86 + 1.7;
       this.layers.sheerOverskirt.uniforms.uSway.value.copy(this.sway).multiplyScalar(1.35);
+      if (this.layers.sheerOverskirt.cloth) this.layers.sheerOverskirt.cloth.update(dt, time, clothOn);
     }
   }
 }

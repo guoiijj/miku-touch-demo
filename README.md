@@ -1,6 +1,14 @@
 # 初音未来 · 衣橱工作室
 
-把原先的 `miku_rig.glb` 做成可换装、可做动作的独立版本。原模型仍保留在旧工程中，这里只是读取并使用它，没有覆盖旧文件。
+把原先的 `miku_rig.glb` 做成可换装、可做动作的独立版本。本包是整理后的可运行源码包，已包含本地 Three.js、运行模型和 VRM 展厅资源。
+
+## 分享包内容
+
+- 换装主页面：`index.html`、`styles.css`、`src/`
+- VRM 展厅：`vrm.html`、`vendor/three-vrm/`、`models/miku_vrm.vrm`、`models/vrma/`
+- 运行模型：`models/miku_rig.glb`（Draco 压缩）
+- 本地静态服务器：`serve.mjs`、`启动.bat`
+- Blender 工程和成品 GLB 不在本包内，见同一下载页的 `GitHub-Miku-Blender` 压缩包。
 
 ## 打开方式
 
@@ -9,7 +17,7 @@
 - 双击 `启动.bat`，浏览器会自动打开 `http://127.0.0.1:8899/`。
 - 也可以在本目录运行 `node serve.mjs`，再手动打开终端里显示的地址。
 
-模型约 59 MB，第一次载入需要几秒。页面完全在本地运行，不上传模型，也不调用外部生成服务。
+模型已用 Draco 压缩到约 8.9 MB，比原文件小约 85%，首次载入明显更快。页面完全在本地运行，不上传模型，也不调用外部生成服务。
 
 ## 当前能力
 
@@ -27,6 +35,21 @@
 - `米白居家卫衣，站好`
 - `月白舞台长裙，摆个姿势`
 
+## 开源 VRM 展厅
+
+除换装页外，另有一个独立展厅 `vrm.html`，用于查看原始 VRM 模型与动态效果。
+
+- 渲染：[pixiv/three-vrm](https://github.com/pixiv/three-vrm) `3.5.5`，本地安装，不依赖 CDN。
+- 模型：`Tda式初音ミクV4X`（许可请以原发布页为准），放在 `models/miku_vrm.vrm`。
+- 动作：5 段开源 VRMA（打招呼、挥手、拍手、舞步、骑马舞），来自 [ruslanmv/3D-Avatar-Chatbot](https://github.com/ruslanmv/3D-Avatar-Chatbot)（Apache-2.0），用 [vrm-c/bvh2vrma](https://github.com/vrm-c/bvh2vrma) 转换；播放器为 [pixiv/three-vrm-animation](https://github.com/pixiv/three-vrm-animation) `3.5.5`。
+- 动作细节：抬膝、跳跃和转身时按髋部骨骼基准校正整段高度，避免模型上下漂移；拍手片段裁掉了原动作开头和结尾的坐姿。
+- 物理：使用 `three-vrm` 自带的 `VRMSpringBoneManager`，为头发、裙摆和领带配置 82 个弹簧关节与 27 个碰撞锚点（手臂、前臂、手、髋、大腿、小腿、上胸），没有自写布料算法。
+- 裙摆：抬膝较高时会与大腿胶囊保持距离，减少裙片夹进腿里；属于游戏级近似，不是逐片布料模拟。
+- 交互：动作按钮可随时切换，一次性动作播完自动回到待机；拖动旋转、滚轮缩放，右上角可返回衣橱。
+
+## Blender 动画工程
+
+Blender 主场景、纯角色 GLB、六张渲染图和回读验收图在单独的 `GitHub-Miku-Blender` 压缩包中，避免源码包过大。下载页同属一个 Release。
 ## 改造要点
 
 - 衣层是绑定到原骨架上的独立 `SkinnedMesh`，不是给整张贴图重新上色。
@@ -44,10 +67,13 @@
 
 - [ruslanmv/3D-Wardrobe-Forge](https://github.com/ruslanmv/3D-Wardrobe-Forge)：VRM 服装生成、衣层组织、合身检查报告。这里借鉴了“衣层独立、合身结果可检查”的工程拆分，没有调用它的生成服务。
 - [saori-eth/vrm-mixamo-retargeter](https://github.com/saori-eth/vrm-mixamo-retargeter)：Three.js 下 VRM 与 Mixamo 骨骼重定向。这里借鉴了骨骼命名映射和动作重定向思路。
+- [ruslanmv/3D-Avatar-Chatbot](https://github.com/ruslanmv/3D-Avatar-Chatbot)：提供展厅使用的开源 BVH 动作片段，Apache-2.0。
+- [vrm-c/bvh2vrma](https://github.com/vrm-c/bvh2vrma)：把 BVH 转成 VRMA 的转换工具。
+- [pixiv/three-vrm-animation](https://github.com/pixiv/three-vrm-animation)：展厅的 VRMA 动作播放器，随 `three-vrm` 本地安装。
 
 ## 文件结构
 
-- `models/miku_rig.glb`：运行时使用的原始绑定模型。
+- `models/miku_rig.glb`：运行时使用的绑定模型，几何数据已用 Draco 压缩。
 - `src/wardrobe.js`：六套造型、衣层、袖子、裙摆、材质与遮挡。
 - `src/rig.js`：动作、重心和四肢协调。
 - `src/modelCharacter.js`：读取原模型、骨骼代理和毛发重绑定。
@@ -57,4 +83,4 @@
 
 ## 已知边界
 
-这是风格化的分层衣装，不是物理布料模拟；极端抬臂或转身时，超长双马尾仍可能与袖子短暂交叠。要增加新衣型，优先在 `wardrobe.js` 里新增衣层，再把它加入 `OUTFITS` 的 `layers`。
+这是风格化的分层衣装，不是物理布料模拟；极端抬臂或转身时，超长双马尾仍可能与袖子短暂交叠。VRM 展厅的裙摆同样是弹簧近似，快速抬膝时仍可能出现少量裙片压腿，已通过加大碰撞半径把明显穿模压下去。要增加新衣型，优先在 `wardrobe.js` 里新增衣层，再把它加入 `OUTFITS` 的 `layers`。
