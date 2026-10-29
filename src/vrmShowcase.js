@@ -265,16 +265,27 @@ async function loadModel(modelUrl) {
     const manifestResponse = await fetch('./models/miku_vrm.parts.json', { cache: 'force-cache' });
     if (!manifestResponse.ok) throw new Error('model parts manifest not found');
     const manifest = await manifestResponse.json();
-    const chunks = [];
+    const partBases = [
+      'https://cdn.jsdelivr.net/gh/guoiijj/miku-touch-demo@main/models/miku_vrm.parts/',
+      './models/miku_vrm.parts/'
+    ];
     let loaded = 0;
-    for (const name of manifest.parts) {
-      const response = await fetch('./models/miku_vrm.parts/' + name, { cache: 'force-cache' });
-      if (!response.ok) throw new Error('model part failed: ' + name);
-      const chunk = new Uint8Array(await response.arrayBuffer());
-      chunks.push(chunk);
-      loaded += chunk.byteLength;
-      if (manifest.totalBytes) pbar.style.width = Math.round((loaded / manifest.totalBytes) * 100) + '%';
-    }
+    const chunks = await Promise.all(manifest.parts.map(async (name) => {
+      let lastError;
+      for (const base of partBases) {
+        try {
+          const response = await fetch(base + name, { cache: 'force-cache' });
+          if (!response.ok) throw new Error('model part failed: ' + name);
+          const chunk = new Uint8Array(await response.arrayBuffer());
+          loaded += chunk.byteLength;
+          if (manifest.totalBytes) pbar.style.width = Math.round((loaded / manifest.totalBytes) * 100) + '%';
+          return chunk;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError;
+    }));
     const bytes = new Uint8Array(loaded);
     let offset = 0;
     for (const chunk of chunks) {
